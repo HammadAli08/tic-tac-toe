@@ -1,20 +1,56 @@
 # Todo Agent Loop
 
-A small Todo List app built with Node.js, Express, TypeScript, SQLite, and a framework-free browser UI.
+Todo Agent Loop is a small Todo List application: an Express + TypeScript API, SQLite persistence via `better-sqlite3`, and a framework-free static frontend. The repository also contains the workflow and MCP pieces used to exercise an agent-driven development loop.
 
-## Run
+## Run locally
 
 ```bash
 cd app
-npm install
+npm ci
 npm run dev
 ```
 
-Open http://localhost:3000. The SQLite database is persisted at `app/data/todos.sqlite`.
-
-## Test
+Open <http://localhost:3000>. The database is stored at `app/data/todos.sqlite` and is ignored by Git. To run tests and the build:
 
 ```bash
-cd app
 npm test
+npm run build
 ```
+
+## The end-to-end loop
+
+1. **Ticket creation** — The Linear MCP connection created the `Todo Agent Loop` project and nine backlog tickets, including HAM-11 for nonexistent-ID handling.
+2. **Ticket fetch + development** — HAM-11 was fetched, moved to In Progress, and implemented on `fix/todo-404`. The route now returns a clear 404 JSON body for unknown PATCH and DELETE IDs, with a regression test.
+3. **Status updates** — The ticket was moved to In Progress through Linear. Moving it to In Review after a real PR remains pending because this checkout has no GitHub remote/PR.
+4. **CI** — `.github/workflows/ci.yml` runs on pull requests: checkout, Node setup, `npm ci` in `app/`, tests, and build. The same commands pass locally.
+5. **PR review** — `.github/workflows/pr-review.yml` fetches a PR diff, sends it to OpenAI using `OPENAI_API_KEY`, validates an `approve` or `request_changes` JSON verdict, and comments on the PR.
+6. **Auto-merge** — `.github/workflows/auto-merge.yml` requires successful CI and an approved review marker before squash-merging into `main`. It cannot invoke this chat’s Linear MCP connection from GitHub Actions, so automatic Linear completion is not currently implemented.
+7. **Discovery** — The manually triggered discovery workflow scans `app/` for unused exports, untested routes, TODO/FIXME comments, and missing error handling, then asks OpenAI for prioritization and commits `automation/discovery-report.md`. The local report found missing explicit error handling in `app/src/routes/todos.ts`; no local API key was available, so prioritization used the static fallback.
+8. **MCP server** — `mcp-server/` exposes `list_routes`, `get_file`, `explain_symbol`, `get_db_schema`, and read-only `query_todos` over stdio using `@modelcontextprotocol/sdk`.
+
+## Agents and MCP servers
+
+The Codex coding agent performed the implementation and verification; no separate sub-agents were used. The Linear MCP server was used for project/ticket creation and status changes. GitHub tooling was connected for repository discovery, but no matching remote was configured, so no branch push or PR was created. The custom Todo MCP server is the repository’s own local inspection server.
+
+## Connect the custom MCP server
+
+Build it from the repository root:
+
+```bash
+npm ci --prefix mcp-server
+npm run build --prefix mcp-server
+```
+
+For Claude Code, merge `mcp-config/claude-code.mcp.json` into the MCP configuration. For Codex, add `mcp-config/codex.toml.snippet` to its TOML configuration. Both launch exactly:
+
+```text
+node mcp-server/dist/index.js
+```
+
+Run the server with the repository root as the working directory so it can find `app/src` and `app/data/todos.sqlite`.
+
+## Limitations and next steps
+
+The repository has no configured GitHub remote, so the PR, live Action runs, red/green workflow confirmation, and Linear “In Review” transition were not completed. The review and discovery workflows require an `OPENAI_API_KEY` repository secret and were not live-tested. `query_todos` intentionally permits only a single `SELECT ... FROM todos` statement, and the route/error analysis is heuristic rather than a full TypeScript data-flow analysis.
+
+Next, I would configure the remote and secrets, push the branch, validate the workflows on a real PR, replace the auto-merge workflow’s MCP limitation with an explicitly authorized Linear API integration, and add stronger parser-based route/symbol analysis and error middleware.
