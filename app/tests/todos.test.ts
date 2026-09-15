@@ -17,8 +17,8 @@ describe('todos API', () => {
     const toggleResponse = await request(app).patch('/todos/999');
     const deleteResponse = await request(app).delete('/todos/999');
     expect(toggleResponse.status).toBe(404);
-    expect(toggleResponse.body).toEqual({ error: 'Todo with id 999 was not found' });
+    expect(toggleResponse.body).toEqual({ error: 'Todo with id 999 was not found', code: 'TODO_NOT_FOUND' });
     expect(deleteResponse.status).toBe(404);
-    expect(deleteResponse.body).toEqual({ error: 'Todo with id 999 was not found' });
+    expect(deleteResponse.body).toEqual({ error: 'Todo with id 999 was not found', code: 'TODO_NOT_FOUND' });
   });
 });
