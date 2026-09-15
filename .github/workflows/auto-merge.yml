@@ -1,0 +1,63 @@
+name: Auto Merge Approved PR
+
+on:
+  workflow_run:
+    workflows: [CI, AI Pull Request Review]
+    types: [completed]
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge only when CI and AI review both pass
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const sha = run.head_sha;
+
+            // workflow_run.pull_requests is empty for some events, so fall back to a SHA lookup.
+            let prs = run.pull_requests || [];
+            if (!prs.length) {
+              const response = await github.rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: sha });
+              prs = response.data;
+            }
+            if (prs.length !== 1) {
+              core.info(`Expected one PR for ${sha}, found ${prs.length}; leaving open.`);
+              return;
+            }
+
+            const pr = await github.rest.pulls.get({ owner, repo, pull_number: prs[0].number });
+            if (pr.data.state !== 'open' || pr.data.base.ref !== 'main') return;
+
+            const workflowRuns = await github.rest.actions.listWorkflowRunsForRepo({ owner, repo, head_sha: sha, per_page: 100 });
+            const ci = workflowRuns.data.workflow_runs.find(item => item.name === 'CI');
+            const review = workflowRuns.data.workflow_runs.find(item => item.name === 'AI Pull Request Review');
+            if (!ci || ci.conclusion !== 'success' || !review || review.conclusion !== 'success') {
+              core.info('CI and review workflow have not both passed; leaving PR open.');
+              return;
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: pr.data.number, per_page: 100 });
+            const approved = comments.some(comment => comment.user?.type === 'Bot' && comment.body?.includes('<!-- ai-review-verdict: approve -->'));
+            if (!approved) {
+              core.info('No approved AI review comment found; leaving PR open.');
+              return;
+            }
+
+            const merge = await github.rest.pulls.merge({ owner, repo, pull_number: pr.data.number, merge_method: 'squash' });
+            if (!merge.data.merged) throw new Error(`GitHub did not merge the PR: ${merge.data.message}`);
+
+            const ticket = `${pr.data.title}\n${pr.data.body || ''}`.match(/\b[A-Z]{2,}-\d+\b/)?.[0];
+            if (ticket) {
+              core.warning(`PR merged. Linear ticket ${ticket} must be moved to Done through the Linear MCP connection; GitHub Actions cannot invoke this MCP connection.`);
+            }
