@@ -5,7 +5,7 @@ import { toTodo } from '../db';
 export function todosRouter(db: Database.Database) {
   const router = Router();
   const notFound = (res: Response, id: string) =>
-    res.status(404).json({ error: `Todo with id ${id} was not found` });
+    res.status(404).json({ error: `Todo with id ${id} was not found`, code: 'TODO_NOT_FOUND' });
 
   router.get('/', (_req, res) => {
     const rows = db.prepare('SELECT id, title, completed FROM todos ORDER BY id DESC').all() as Array<{ id: number; title: string; completed: number }>;
