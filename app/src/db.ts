@@ -2,9 +2,7 @@ import Database from 'better-sqlite3';
 
 export type Todo = { id: number; title: string; completed: boolean };
 
-export function createDatabase(filename = process.env.TODO_DB_PATH ?? 'data/todos.sqlite') {
-  const db = new Database(filename);
-  db.pragma('journal_mode = WAL');
+export function initializeDatabase(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS todos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -12,6 +10,13 @@ export function createDatabase(filename = process.env.TODO_DB_PATH ?? 'data/todo
       completed INTEGER NOT NULL DEFAULT 0
     )
   `);
+  return db;
+}
+
+export function createDatabase(filename = process.env.TODO_DB_PATH ?? 'data/todos.sqlite') {
+  const db = new Database(filename);
+  db.pragma('journal_mode = WAL');
+  initializeDatabase(db);
   return db;
 }
 
